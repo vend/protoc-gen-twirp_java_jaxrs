@@ -175,13 +175,18 @@ func (g *generator) generateServiceClient(file *descriptor.FileDescriptorProto, 
 	servicePath := g.getServicePath(file, service)
 	interfaceClass := getJavaType(file, getJavaServiceClassName(file, service))
 	provider := getJavaType(file, "ProtoBufMessageProvider")
+	outerClass := getJavaOuterClassName(file)
 
 	static := ""
 	if !multi {
 		static = "static "
 	}
+	g.P(`public interface BeforeClientRequestCallback {`)
+	g.P(`  javax.ws.rs.client.Invocation.Builder beforeRequest(javax.ws.rs.client.Invocation.Builder requestBuilder);`)
+	g.P(`}`)
 	g.P(`public `, static, `class `, serviceClass, ` implements `, interfaceClass, ` {`)
 	g.P(`  private final javax.ws.rs.client.WebTarget target;`)
+	g.P(`  private final java.util.ArrayList<`, outerClass, `.BeforeClientRequestCallback> beforeRequestCallbacks = new java.util.ArrayList<>();`)
 	g.P()
 	g.P(`  public `, serviceClass, `(javax.ws.rs.client.WebTarget target) {`)
 	g.P(`    this.target = target.path("`, servicePath, `");`)
@@ -189,8 +194,9 @@ func (g *generator) generateServiceClient(file *descriptor.FileDescriptorProto, 
 	g.P(`  }`)
 	g.P()
 	g.P(`  private <R> R call(String path, com.google.protobuf.Message req, Class<R> responseClass) {`)
-	g.P(`    javax.ws.rs.core.Response response = target.path(path)`)
-	g.P(`        .request("application/protobuf")`)
+	g.P(`    javax.ws.rs.client.Invocation.Builder requestBuilder = target.path(path)`)
+	g.P(`        .request("application/protobuf");`)
+	g.P(`  javax.ws.rs.core.Response response = prepareRequest(requestBuilder)`)
 	g.P(`        .post(javax.ws.rs.client.Entity.entity(req, "application/protobuf"));`)
 	g.P(`	 if (response.getStatusInfo().getFamily() == javax.ws.rs.core.Response.Status.Family.SUCCESSFUL) {`)
 	g.P(`        R r = response.readEntity(responseClass);`)
@@ -201,6 +207,16 @@ func (g *generator) generateServiceClient(file *descriptor.FileDescriptorProto, 
 	g.P(`    }`)
 	g.P(`  }`)
 	g.P()
+	g.P(`  private javax.ws.rs.client.Invocation.Builder prepareRequest(javax.ws.rs.client.Invocation.Builder requestBuilder) {`)
+	g.P(`    for (BeforeClientRequestCallback callback : this.beforeRequestCallbacks) {`)
+	g.P(`      requestBuilder = callback.beforeRequest(requestBuilder);`)
+	g.P(`    }`)
+	g.P(`    return requestBuilder;`)
+	g.P(`  }`)
+	g.P()
+	g.P(`  public void onBeforeRequest(`, outerClass, `.BeforeClientRequestCallback callback) {`)
+	g.P(`    this.beforeRequestCallbacks.add(callback);`)
+	g.P(`  }`)
 
 	for _, method := range service.GetMethod() {
 		inputType := getJavaType(file, method.GetInputType())
