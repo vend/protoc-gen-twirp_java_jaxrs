@@ -285,6 +285,44 @@ func (g *generator) generateServiceInterface(file *descriptor.FileDescriptorProt
 
 	g.P(`}`)
 	g.P()
+	g.P(`public interface I`, serviceClass, `Service {`)
+
+	for _, method := range service.GetMethod() {
+		inputType := getJavaType(file, method.GetInputType())
+		outputType := getJavaType(file, method.GetOutputType())
+		methodName := lowerCamelCase(method.GetName())
+
+		// add comment
+		g.P(`  `, outputType, ` `, methodName, `(`, inputType, ` request);`)
+	}
+
+	g.P(`}`)
+	g.P()
+	g.P(`public interface I`, serviceClass, `ServiceFactory {`)
+	g.P(`  I`, serviceClass, `Service create(com.vendhq.auth.AuthenticationContext authenticationContext);`)
+	g.P(`}`)
+	g.P(`@javax.ws.rs.Path( "/api/_internal/twirp/`, servicePath, `" )`)
+	g.P(`@javax.ws.rs.Consumes({"application/protobuf", "application/json"})`)
+	g.P(`@javax.ws.rs.Produces({"application/protobuf", "application/json"})`)
+	g.P(`public static class `, serviceClass, `Resource {`)
+	g.P(`  `, `@com.google.inject.Inject`)
+	g.P(`  `, `private I`, serviceClass, `ServiceFactory serviceFactory;`)
+	g.P()
+	for _, method := range service.GetMethod() {
+		inputType := getJavaType(file, method.GetInputType())
+		outputType := getJavaType(file, method.GetOutputType())
+		methodName := lowerCamelCase(method.GetName())
+
+		g.P(`  `, `@javax.ws.rs.POST`)
+		g.P(`  `, `@javax.ws.rs.Path( "/`, strings.Title(methodName), `" )`)
+		g.P(`  `, `public `, outputType, ` `, methodName, `(@io.dropwizard.auth.Auth com.vendhq.auth.AuthenticationContext authenticationContext, `, inputType, ` request) {`)
+
+		g.P(`    I`, serviceClass, `Service svc = serviceFactory.create(authenticationContext);`)
+		g.P(`    return svc.`, methodName, `(request);`)
+		g.P(`  }`)
+	}
+	g.P(`}`)
+	g.P()
 
 	out := &plugin.CodeGeneratorResponse_File{}
 	out.Content = proto.String(g.output.String())
